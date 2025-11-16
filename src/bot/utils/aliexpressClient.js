@@ -5,30 +5,24 @@ const APP_KEY = process.env.ALIEXPRESS_APP_KEY;
 const APP_SECRET = process.env.ALIEXPRESS_APP_SECRET;
 const TRACKING_ID = process.env.ALIEXPRESS_TRACKING_ID;
 
-// ⚠️ التعديل المهم: استخدام Business Interface بدلاً من System Interface
-const API_GATEWAY = process.env.ALIEXPRESS_API_GATEWAY || 'https://api-sg.aliexpress.com/sync';
-
 if (!APP_KEY || !APP_SECRET) {
   console.error('⚠️ تحذير: ALIEXPRESS_APP_KEY و ALIEXPRESS_APP_SECRET غير محددين في متغيرات البيئة');
 }
 
 /**
- * توليد توقيع HMAC-SHA256 حسب متطلبات AliExpress Open Platform
+ * توليد توقيع MD5 حسب متطلبات AliExpress (البديل الأبسط)
  */
-function generateSignature(apiName, params) {
-  // ترتيب المعاملات أبجدياً حسب المفاتيح (ASCII)
+function generateSignatureMD5(apiName, params, appSecret) {
   const sortedKeys = Object.keys(params).sort();
   
-  // دمج المفاتيح والقيم
-  let concatenated = apiName; // ⚠️ مهم: البدء باسم الـ API
+  let concatenated = apiName;
   sortedKeys.forEach((key) => {
     concatenated += key + params[key];
   });
 
-  // توليد التوقيع باستخدام HMAC-SHA256
   const signature = crypto
-    .createHmac('sha256', APP_SECRET)
-    .update(concatenated, 'utf8')
+    .createHash('md5')
+    .update(appSecret + concatenated + appSecret, 'utf8')
     .digest('hex')
     .toUpperCase();
 
@@ -36,7 +30,7 @@ function generateSignature(apiName, params) {
 }
 
 /**
- * استدعاء AliExpress API مع التوقيع الصحيح
+ * استدعاء AliExpress API
  */
 async function callAliexpressAPI(apiName, apiParams = {}) {
   if (!APP_KEY || !APP_SECRET) {
@@ -48,30 +42,21 @@ async function callAliexpressAPI(apiName, apiParams = {}) {
   // المعاملات الأساسية
   const baseParams = {
     app_key: APP_KEY,
-    sign_method: 'sha256',
+    method: apiName,
     timestamp: timestamp,
     format: 'json',
     v: '2.0',
-    method: apiName
+    sign_method: 'md5'
   };
 
   // دمج معاملات الـ API
   const allParams = { ...baseParams, ...apiParams };
 
-  // توليد التوقيع (بدون sign في المعاملات)
-  const sign = generateSignature(apiName, allParams);
-
-  // إضافة التوقيع
+  // توليد التوقيع
+  const sign = generateSignatureMD5(apiName, allParams, APP_SECRET);
   const finalParams = { ...allParams, sign };
 
-  // ⚠️ تحديد نوع الـ Endpoint الصحيح
-  let endpoint = API_GATEWAY;
-  
-  // إذا كان API من نوع Business (معظم APIs)، استخدم /sync
-  // وإلا استخدم /rest لبعض الحالات الخاصة
-  if (apiName.startsWith('aliexpress.affiliate')) {
-    endpoint = 'https://api-sg.aliexpress.com/sync';
-  }
+  const endpoint = 'https://api-sg.aliexpress.com/sync';
 
   try {
     console.log('📡 إرسال طلب إلى:', endpoint);
@@ -80,15 +65,11 @@ async function callAliexpressAPI(apiName, apiParams = {}) {
 
     const response = await axios.get(endpoint, {
       params: finalParams,
-      timeout: 15000,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
+      timeout: 15000
     });
 
     console.log('✅ استجابة API:', JSON.stringify(response.data, null, 2));
 
-    // التحقق من الأخطاء في الاستجابة
     if (response.data && response.data.error_response) {
       throw new Error(
         `AliExpress API Error: ${response.data.error_response.msg || response.data.error_response.sub_msg || 'Unknown error'}`
@@ -109,23 +90,28 @@ async function callAliexpressAPI(apiName, apiParams = {}) {
  * الحصول على تفاصيل منتج من AliExpress
  */
 async function getProductDetails(productId, targetCurrency = 'USD', targetLanguage = 'AR', country = 'DZ') {
+  // ⚠️ التأكد من أن productId ليس Promise
+  const resolvedProductId = await Promise.resolve(productId);
+  
+  if (!resolvedProductId || resolvedProductId === '[object Promise]') {
+    throw new Error('productId غير صالح أو غير محلول');
+  }
+
   const apiName = 'aliexpress.affiliate.productdetail.get';
 
   const apiParams = {
-    product_ids: productId.toString(),
+    product_ids: String(resolvedProductId),
     target_currency: targetCurrency,
     target_language: targetLanguage,
     country: country
   };
 
-  // إضافة tracking_id فقط إذا كان موجوداً
   if (TRACKING_ID) {
     apiParams.tracking_id = TRACKING_ID;
   }
 
   const response = await callAliexpressAPI(apiName, apiParams);
 
-  // استخراج بيانات المنتج من الاستجابة
   if (
     response &&
     response.aliexpress_affiliate_productdetail_get_response &&
@@ -133,7 +119,6 @@ async function getProductDetails(productId, targetCurrency = 'USD', targetLangua
   ) {
     const result = response.aliexpress_affiliate_productdetail_get_response.resp_result;
     
-    // التحقق من resp_code
     if (result.resp_code !== 200) {
       throw new Error(`AliExpress API returned error code: ${result.resp_code}, message: ${result.resp_msg}`);
     }
@@ -147,11 +132,10 @@ async function getProductDetails(productId, targetCurrency = 'USD', targetLangua
     }
   }
 
-  throw new Error('فشل في الحصول على بيانات المنتج من AliExpress API - استجابة غير صحيحة');
+  throw new Error('فشل في الحصول على بيانات المنتج من AliExpress API');
 }
 
 module.exports = {
-  generateSignature,
   callAliexpressAPI,
   getProductDetails
 };
