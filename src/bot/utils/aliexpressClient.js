@@ -6,133 +6,142 @@ const APP_SECRET = process.env.ALIEXPRESS_APP_SECRET;
 const TRACKING_ID = process.env.ALIEXPRESS_TRACKING_ID;
 
 if (!APP_KEY || !APP_SECRET) {
-  console.error('⚠️ تحذير: ALIEXPRESS_APP_KEY و ALIEXPRESS_APP_SECRET غير محددين في متغيرات البيئة');
+  console.error('⚠️ ALIEXPRESS_APP_KEY و ALIEXPRESS_APP_SECRET مطلوبان في متغيرات البيئة');
 }
 
 /**
- * توليد توقيع MD5 حسب متطلبات AliExpress (البديل الأبسط)
+ * توليد توقيع MD5 حسب وثائق AliExpress الرسمية
+ * الصيغة: MD5(app_secret + sorted_params_concatenated + app_secret)
  */
-function generateSignatureMD5(apiName, params, appSecret) {
+function generateSignMD5(params, appSecret) {
+  // ترتيب المفاتيح أبجدياً (ASCII order)
   const sortedKeys = Object.keys(params).sort();
   
-  let concatenated = apiName;
+  // دمج القيم: key1value1key2value2...
+  let concatenated = '';
   sortedKeys.forEach((key) => {
-    concatenated += key + params[key];
+    const value = params[key];
+    concatenated += key + value;
   });
 
-  const signature = crypto
+  // التوقيع: MD5(secret + params + secret)
+  const stringToSign = appSecret + concatenated + appSecret;
+  
+  const sign = crypto
     .createHash('md5')
-    .update(appSecret + concatenated + appSecret, 'utf8')
+    .update(stringToSign, 'utf8')
     .digest('hex')
     .toUpperCase();
 
-  return signature;
+  return sign;
 }
 
 /**
- * استدعاء AliExpress API
+ * استدعاء AliExpress Affiliate API
  */
-async function callAliexpressAPI(apiName, apiParams = {}) {
+async function callAliexpressAPI(method, params = {}) {
   if (!APP_KEY || !APP_SECRET) {
-    throw new Error('إعدادات API الخاصة بـ AliExpress غير مكتملة في ملف .env');
+    throw new Error('إعدادات AliExpress API غير مكتملة');
   }
 
-  const timestamp = Date.now().toString();
-
-  // المعاملات الأساسية
+  // المعاملات الأساسية المطلوبة
   const baseParams = {
+    method: method,
     app_key: APP_KEY,
-    method: apiName,
-    timestamp: timestamp,
+    timestamp: Date.now().toString(),
     format: 'json',
     v: '2.0',
     sign_method: 'md5'
   };
 
   // دمج معاملات الـ API
-  const allParams = { ...baseParams, ...apiParams };
+  const allParams = { ...baseParams, ...params };
 
-  // توليد التوقيع
-  const sign = generateSignatureMD5(apiName, allParams, APP_SECRET);
+  // حساب التوقيع
+  const sign = generateSignMD5(allParams, APP_SECRET);
+
+  // المعاملات النهائية مع التوقيع
   const finalParams = { ...allParams, sign };
 
   const endpoint = 'https://api-sg.aliexpress.com/sync';
 
   try {
-    console.log('📡 إرسال طلب إلى:', endpoint);
-    console.log('📝 API Name:', apiName);
-    console.log('🔑 Parameters:', JSON.stringify(finalParams, null, 2));
+    console.log('📡 طلب API:', method);
+    console.log('🔑 معاملات:', JSON.stringify(finalParams, null, 2));
 
     const response = await axios.get(endpoint, {
       params: finalParams,
-      timeout: 15000
+      timeout: 20000
     });
 
-    console.log('✅ استجابة API:', JSON.stringify(response.data, null, 2));
+    console.log('✅ استجابة:', JSON.stringify(response.data, null, 2));
 
+    // فحص الأخطاء
     if (response.data && response.data.error_response) {
-      throw new Error(
-        `AliExpress API Error: ${response.data.error_response.msg || response.data.error_response.sub_msg || 'Unknown error'}`
-      );
+      const error = response.data.error_response;
+      throw new Error(`AliExpress API Error [${error.code}]: ${error.msg || error.sub_msg}`);
     }
 
     return response.data;
+
   } catch (error) {
-    if (error.response) {
-      console.error('❌ خطأ في استجابة API:', JSON.stringify(error.response.data, null, 2));
+    if (error.response && error.response.data) {
+      console.error('❌ خطأ API:', JSON.stringify(error.response.data, null, 2));
     }
-    console.error('❌ خطأ أثناء استدعاء AliExpress API:', error.message);
+    console.error('❌ خطأ:', error.message);
     throw error;
   }
 }
 
 /**
- * الحصول على تفاصيل منتج من AliExpress
+ * الحصول على تفاصيل منتج
  */
 async function getProductDetails(productId, targetCurrency = 'USD', targetLanguage = 'AR', country = 'DZ') {
-  // ⚠️ التأكد من أن productId ليس Promise
-  const resolvedProductId = await Promise.resolve(productId);
+  // التأكد من حل Promise
+  const resolvedId = await Promise.resolve(productId);
   
-  if (!resolvedProductId || resolvedProductId === '[object Promise]') {
-    throw new Error('productId غير صالح أو غير محلول');
+  if (!resolvedId || typeof resolvedId !== 'string' || resolvedId.includes('Promise')) {
+    throw new Error('معرف المنتج غير صالح');
   }
 
-  const apiName = 'aliexpress.affiliate.productdetail.get';
-
-  const apiParams = {
-    product_ids: String(resolvedProductId),
+  const method = 'aliexpress.affiliate.productdetail.get';
+  const params = {
+    product_ids: resolvedId,
     target_currency: targetCurrency,
     target_language: targetLanguage,
     country: country
   };
 
+  // إضافة tracking_id إذا كان موجوداً
   if (TRACKING_ID) {
-    apiParams.tracking_id = TRACKING_ID;
+    params.tracking_id = TRACKING_ID;
   }
 
-  const response = await callAliexpressAPI(apiName, apiParams);
+  const response = await callAliexpressAPI(method, params);
 
-  if (
-    response &&
-    response.aliexpress_affiliate_productdetail_get_response &&
-    response.aliexpress_affiliate_productdetail_get_response.resp_result
-  ) {
-    const result = response.aliexpress_affiliate_productdetail_get_response.resp_result;
-    
-    if (result.resp_code !== 200) {
-      throw new Error(`AliExpress API returned error code: ${result.resp_code}, message: ${result.resp_msg}`);
-    }
-
-    const resultData = typeof result.result === 'string' ? JSON.parse(result.result) : result.result;
-
-    if (resultData && resultData.products && resultData.products.product && resultData.products.product.length > 0) {
-      return resultData.products.product[0];
-    } else {
-      throw new Error('لم يتم العثور على بيانات المنتج في استجابة API');
-    }
+  // استخراج النتيجة
+  const apiResponse = response.aliexpress_affiliate_productdetail_get_response;
+  
+  if (!apiResponse || !apiResponse.resp_result) {
+    throw new Error('استجابة API غير صالحة');
   }
 
-  throw new Error('فشل في الحصول على بيانات المنتج من AliExpress API');
+  const result = apiResponse.resp_result;
+
+  if (result.resp_code !== 200) {
+    throw new Error(`API Error Code ${result.resp_code}: ${result.resp_msg || 'Unknown'}`);
+  }
+
+  // تحليل النتيجة (قد تكون string أو object)
+  const resultData = typeof result.result === 'string' 
+    ? JSON.parse(result.result) 
+    : result.result;
+
+  if (!resultData || !resultData.products || !resultData.products.product || resultData.products.product.length === 0) {
+    throw new Error('لم يتم العثور على بيانات المنتج');
+  }
+
+  return resultData.products.product[0];
 }
 
 module.exports = {
