@@ -81,9 +81,32 @@ async function bootstrap() {
     console.log(`الخادم يعمل على http://${HOST}:${PORT}`);
   });
 
-  // إيقاف البوت بشكل آمن
-  process.once('SIGINT', () => bot.stop('SIGINT'));
-  process.once('SIGTERM', () => bot.stop('SIGTERM'));
+   // إيقاف البوت والخادم بشكل آمن بحسب وضع التشغيل
+  if (!USE_WEBHOOK) {
+    // وضع Polling: البوت يشغَّل بواسطة bot.launch()، فيمكن استدعاء bot.stop()
+    process.once('SIGINT', () => {
+      console.log('استلام SIGINT في وضع polling، يتم إيقاف البوت...');
+      bot.stop('SIGINT');
+      process.exit(0);
+    });
+
+    process.once('SIGTERM', () => {
+      console.log('استلام SIGTERM في وضع polling، يتم إيقاف البوت...');
+      bot.stop('SIGTERM');
+      process.exit(0);
+    });
+  } else {
+    // وضع Webhook (Render): لا نستدعي bot.stop() لأنه لم يُشغَّل بـ bot.launch()
+    process.once('SIGINT', () => {
+      console.log('استلام SIGINT في وضع webhook، سيتم إنهاء العملية بدون مناداة bot.stop()...');
+      process.exit(0);
+    });
+
+    process.once('SIGTERM', () => {
+      console.log('استلام SIGTERM في وضع webhook، سيتم إنهاء العملية بدون مناداة bot.stop()...');
+      process.exit(0);
+    });
+  }
 }
 
 bootstrap().catch((err) => {
