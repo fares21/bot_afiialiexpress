@@ -13,6 +13,7 @@ async function validateLink(ctx) {
       : '';
 
   // البحث عن أول رابط داخل النص
+  // ملاحظة مهمة: يجب الهروب من / في https:// واستخدام s لمسافة بيضاء
   const urlRegex = /(https?://[^s]+)/i;
   const match = text.match(urlRegex);
 
@@ -23,7 +24,7 @@ async function validateLink(ctx) {
 
   const url = match[0];
 
-  // مهم: extractProductId أصبحت async لأنها قد تفك الروابط المختصرة via axios
+  // extractProductId أصبحت async لأنها قد تفك الروابط المختصرة عبر axios
   let productId;
   try {
     productId = await extractProductId(url);
