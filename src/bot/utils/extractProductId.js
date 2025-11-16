@@ -11,7 +11,8 @@ function extractProductIdFromQuery(urlObj) {
   for (const key of keys) {
     if (params.has(key)) {
       const val = params.get(key);
-      const match = val && val.match(/d{6,}/);
+      if (!val) continue;
+      const match = val.match(/d{6,}/);
       if (match) {
         return match[0];
       }
@@ -115,7 +116,8 @@ async function extractProductId(rawUrl) {
 
     // مثال: /i/1005001234567890.html أو /1005001234567890.html
     for (const part of pathParts) {
-      const match = part && part.match(/d{6,}/);
+      if (!part) continue;
+      const match = part.match(/d{6,}/);
       if (match) {
         return match[0];
       }
