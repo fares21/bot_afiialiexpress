@@ -3,36 +3,32 @@ const axios = require('axios');
 
 const APP_KEY = process.env.ALIEXPRESS_APP_KEY;
 const APP_SECRET = process.env.ALIEXPRESS_APP_SECRET;
-const API_GATEWAY = process.env.ALIEXPRESS_API_GATEWAY || 'https://api-sg.aliexpress.com/sync';
 const TRACKING_ID = process.env.ALIEXPRESS_TRACKING_ID;
 
+// ⚠️ التعديل المهم: استخدام Business Interface بدلاً من System Interface
+const API_GATEWAY = process.env.ALIEXPRESS_API_GATEWAY || 'https://api-sg.aliexpress.com/sync';
+
 if (!APP_KEY || !APP_SECRET) {
-  console.error('ALIEXPRESS_APP_KEY و ALIEXPRESS_APP_SECRET مطلوبان في ملف .env');
+  console.error('⚠️ تحذير: ALIEXPRESS_APP_KEY و ALIEXPRESS_APP_SECRET غير محددين في متغيرات البيئة');
 }
 
 /**
  * توليد توقيع HMAC-SHA256 حسب متطلبات AliExpress Open Platform
- * @param {string} apiName - اسم الـ API مثل: aliexpress.affiliate.productdetail.get
- * @param {object} params - معاملات الطلب
- * @returns {string} التوقيع بصيغة HEX كبيرة
  */
 function generateSignature(apiName, params) {
   // ترتيب المعاملات أبجدياً حسب المفاتيح (ASCII)
   const sortedKeys = Object.keys(params).sort();
   
   // دمج المفاتيح والقيم
-  let concatenated = '';
+  let concatenated = apiName; // ⚠️ مهم: البدء باسم الـ API
   sortedKeys.forEach((key) => {
     concatenated += key + params[key];
   });
 
-  // إضافة اسم الـ API في البداية
-  const stringToSign = apiName + concatenated;
-
   // توليد التوقيع باستخدام HMAC-SHA256
   const signature = crypto
     .createHmac('sha256', APP_SECRET)
-    .update(stringToSign, 'utf8')
+    .update(concatenated, 'utf8')
     .digest('hex')
     .toUpperCase();
 
@@ -41,70 +37,91 @@ function generateSignature(apiName, params) {
 
 /**
  * استدعاء AliExpress API مع التوقيع الصحيح
- * @param {string} apiName - اسم الـ API
- * @param {object} apiParams - معاملات الـ API المحددة
- * @returns {Promise<object>} استجابة الـ API
  */
 async function callAliexpressAPI(apiName, apiParams = {}) {
+  if (!APP_KEY || !APP_SECRET) {
+    throw new Error('إعدادات API الخاصة بـ AliExpress غير مكتملة في ملف .env');
+  }
+
   const timestamp = Date.now().toString();
 
-  // المعاملات الأساسية المطلوبة في كل طلب
+  // المعاملات الأساسية
   const baseParams = {
     app_key: APP_KEY,
-    timestamp: timestamp,
     sign_method: 'sha256',
+    timestamp: timestamp,
     format: 'json',
     v: '2.0',
     method: apiName
   };
 
-  // دمج معاملات الـ API مع المعاملات الأساسية
+  // دمج معاملات الـ API
   const allParams = { ...baseParams, ...apiParams };
 
-  // توليد التوقيع
+  // توليد التوقيع (بدون sign في المعاملات)
   const sign = generateSignature(apiName, allParams);
 
-  // إضافة التوقيع للمعاملات النهائية
+  // إضافة التوقيع
   const finalParams = { ...allParams, sign };
 
+  // ⚠️ تحديد نوع الـ Endpoint الصحيح
+  let endpoint = API_GATEWAY;
+  
+  // إذا كان API من نوع Business (معظم APIs)، استخدم /sync
+  // وإلا استخدم /rest لبعض الحالات الخاصة
+  if (apiName.startsWith('aliexpress.affiliate')) {
+    endpoint = 'https://api-sg.aliexpress.com/sync';
+  }
+
   try {
-    const response = await axios.get(API_GATEWAY, {
+    console.log('📡 إرسال طلب إلى:', endpoint);
+    console.log('📝 API Name:', apiName);
+    console.log('🔑 Parameters:', JSON.stringify(finalParams, null, 2));
+
+    const response = await axios.get(endpoint, {
       params: finalParams,
-      timeout: 15000
+      timeout: 15000,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
     });
+
+    console.log('✅ استجابة API:', JSON.stringify(response.data, null, 2));
 
     // التحقق من الأخطاء في الاستجابة
     if (response.data && response.data.error_response) {
       throw new Error(
-        `AliExpress API Error: ${response.data.error_response.msg || 'Unknown error'}`
+        `AliExpress API Error: ${response.data.error_response.msg || response.data.error_response.sub_msg || 'Unknown error'}`
       );
     }
 
     return response.data;
   } catch (error) {
-    console.error('خطأ أثناء استدعاء AliExpress API:', error.message);
+    if (error.response) {
+      console.error('❌ خطأ في استجابة API:', JSON.stringify(error.response.data, null, 2));
+    }
+    console.error('❌ خطأ أثناء استدعاء AliExpress API:', error.message);
     throw error;
   }
 }
 
 /**
  * الحصول على تفاصيل منتج من AliExpress
- * @param {string} productId - معرّف المنتج
- * @param {string} targetCurrency - العملة المطلوبة (مثل USD)
- * @param {string} targetLanguage - اللغة المطلوبة (مثل AR)
- * @param {string} country - كود الدولة (مثل DZ للجزائر)
- * @returns {Promise<object>} بيانات المنتج
  */
 async function getProductDetails(productId, targetCurrency = 'USD', targetLanguage = 'AR', country = 'DZ') {
   const apiName = 'aliexpress.affiliate.productdetail.get';
 
   const apiParams = {
-    product_ids: productId,
+    product_ids: productId.toString(),
     target_currency: targetCurrency,
     target_language: targetLanguage,
-    country: country,
-    tracking_id: TRACKING_ID || ''
+    country: country
   };
+
+  // إضافة tracking_id فقط إذا كان موجوداً
+  if (TRACKING_ID) {
+    apiParams.tracking_id = TRACKING_ID;
+  }
 
   const response = await callAliexpressAPI(apiName, apiParams);
 
@@ -115,14 +132,22 @@ async function getProductDetails(productId, targetCurrency = 'USD', targetLangua
     response.aliexpress_affiliate_productdetail_get_response.resp_result
   ) {
     const result = response.aliexpress_affiliate_productdetail_get_response.resp_result;
+    
+    // التحقق من resp_code
+    if (result.resp_code !== 200) {
+      throw new Error(`AliExpress API returned error code: ${result.resp_code}, message: ${result.resp_msg}`);
+    }
+
     const resultData = typeof result.result === 'string' ? JSON.parse(result.result) : result.result;
 
-    if (resultData && resultData.products && resultData.products.product) {
-      return resultData.products.product[0]; // أول منتج في القائمة
+    if (resultData && resultData.products && resultData.products.product && resultData.products.product.length > 0) {
+      return resultData.products.product[0];
+    } else {
+      throw new Error('لم يتم العثور على بيانات المنتج في استجابة API');
     }
   }
 
-  throw new Error('فشل في الحصول على بيانات المنتج من AliExpress API');
+  throw new Error('فشل في الحصول على بيانات المنتج من AliExpress API - استجابة غير صحيحة');
 }
 
 module.exports = {
