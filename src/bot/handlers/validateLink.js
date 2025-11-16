@@ -13,7 +13,7 @@ async function validateLink(ctx) {
       : '';
 
   // البحث عن أول رابط داخل النص
-  const urlRegex = /(https?://[^s]+)/i;
+  const urlRegex = /(https?:\/\/[^\s]+)/i;
   const match = text.match(urlRegex);
 
   if (!match) {
