@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>لوحة إدارة البوت - Broadcast</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #f5f5f5;
+      direction: rtl;
+      text-align: right;
+    }
+    .container {
+      max-width: 800px;
+      margin: 40px auto;
+      background: #fff;
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 22px;
+      margin-bottom: 8px;
+    }
+    h2 {
+      font-size: 18px;
+      margin-top: 24px;
+      margin-bottom: 10px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      padding: 10px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    .btn {
+      padding: 10px 16px;
+      background-color: #1976d2;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 15px;
+      margin-top: 10px;
+    }
+    .btn:hover {
+      background-color: #125a9c;
+    }
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .info {
+      font-size: 14px;
+      color: #555;
+    }
+    .msg {
+      margin-top: 14px;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .msg.success {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .msg.error {
+      background: #ffebee;
+      color: #c62828;
+    }
+    form.logout-form {
+      display: inline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-bar">
+      <div>
+        <h1>لوحة إدارة البوت</h1>
+        <div class="info">
+          مرحباً، <strong><%= adminUser.username %></strong>
+        </div>
+      </div>
+      <div>
+        <form class="logout-form" action="/admin/logout" method="post">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <button type="submit" class="btn" style="background-color:#c62828;">تسجيل الخروج</button>
+        </form>
+      </div>
+    </div>
+
+    <h2>إرسال رسالة Broadcast يدوية</h2>
+    <p class="info">
+      سيتم إرسال الرسالة إلى جميع المستخدمين النشطين المشتركين على دفعات، مع فاصل زمني بين كل دفعة لحماية البوت من حدود الإرسال العالية (Flood Limit).
+    </p>
+
+    <% if (error) { %>
+      <div class="msg error"><%= error %></div>
+    <% } %>
+
+    <% if (result) { %>
+      <div class="msg success" style="white-space: pre-line;"><%= result %></div>
+    <% } %>
+
+    <form method="post" action="/admin/broadcast">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <label for="message">نص الرسالة</label>
+      <textarea id="message" name="message" required placeholder="اكتب هنا نص الرسالة التي تريد إرسالها إلى جميع المشتركين..."></textarea>
+      <br />
+      <button type="submit" class="btn">إرسال البث الآن</button>
+    </form>
+  </div>
+</body>
+</html>
