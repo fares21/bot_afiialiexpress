@@ -1,60 +1,7 @@
 const axios = require('axios');
 
 /**
- * استخراج productId من معاملات الاستعلام في رابط AliExpress.
- * يدعم مفاتيح شائعة مثل: productId, itemId, objId, sku_id, spm, pdp_npi.
- */
-function extractProductIdFromQuery(urlObj) {
-  const params = urlObj.searchParams;
-  const keys = ['productId', 'itemId', 'objId', 'sku_id', 'spm', 'pdp_npi'];
-
-  for (const key of keys) {
-    if (params.has(key)) {
-      const val = params.get(key);
-      if (!val) continue;
-      const match = val.match(/d{6,}/);
-      if (match) {
-        return match[0];
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * فك الروابط المختصرة من نوع s.click.aliexpress.com وإرجاع الرابط النهائي بعد إعادة التوجيه.
- * هذا يسمح باستخراج productId من الروابط القصيرة (Deep Links / Affiliate Links).
- */
-async function resolveShortLink(shortUrl) {
-  try {
-    const response = await axios.get(shortUrl, {
-      maxRedirects: 10,
-      timeout: 10000,
-      validateStatus: (status) => status >= 200 && status < 400
-    });
-
-    // الرابط النهائي بعد سلسلة التوجيهات
-    const finalUrl =
-      (response.request &&
-        response.request.res &&
-        response.request.res.responseUrl) ||
-      response.config.url;
-
-    return finalUrl;
-  } catch (error) {
-    // في حالة الفشل، نحاول استخراج الرابط من ترويسة Location إن وُجدت
-    if (error.response && error.response.headers && error.response.headers.location) {
-      return error.response.headers.location;
-    }
-
-    console.error('❌ فشل في فك الرابط المختصر من AliExpress:', error.message);
-    throw error;
-  }
-}
-
-/**
- * استخراج productId من رابط AliExpress (يدعم الروابط الكاملة والروابط القصيرة).
+ * استخراج productId من رابط AliExpress (يدعم الروابط الكاملة والروابط المختصرة s.click.aliexpress.com).
  * تعيد الدالة:
  *  - معرّف المنتج كسلسلة نصية عند النجاح
  *  - null عند الفشل أو عدم تطابق الرابط مع AliExpress
@@ -73,9 +20,9 @@ async function extractProductId(rawUrl) {
     }
 
     let urlObj = new URL(normalized);
-    const host = urlObj.hostname.toLowerCase();
+    let host = urlObj.hostname.toLowerCase();
 
-    // التحقق من أن الرابط يتبع نطاقات AliExpress المعروفة
+    // التحقق من أن الرابط يتبع نطاقات AliExpress المعروفة (بما في ذلك الروابط المختصرة)
     const isAliExpressHost =
       host.includes('aliexpress.com') ||
       host.includes('a.aliexpress.com') ||
@@ -89,14 +36,27 @@ async function extractProductId(rawUrl) {
     // إذا كان الرابط من نوع s.click.aliexpress.com، نحاول فك الرابط أولاً
     if (host.includes('s.click.aliexpress.com')) {
       console.log('🔗 تم اكتشاف رابط مختصر من AliExpress، جاري فك التوجيه...');
-      try {
-        const resolvedUrl = await resolveShortLink(normalized);
-        console.log('✅ تم فك الرابط المختصر بنجاح:', resolvedUrl);
 
-        normalized = resolvedUrl;
+      try {
+        const response = await axios.get(normalized, {
+          maxRedirects: 10,
+          timeout: 10000,
+          validateStatus: (status) => status >= 200 && status < 400
+        });
+
+        const finalUrl =
+          (response.request &&
+            response.request.res &&
+            response.request.res.responseUrl) ||
+          response.config.url;
+
+        console.log('✅ تم فك الرابط المختصر بنجاح:', finalUrl);
+
+        normalized = finalUrl;
         urlObj = new URL(normalized);
+        host = urlObj.hostname.toLowerCase();
       } catch (err) {
-        console.error('❌ فشل في فك الرابط المختصر، لن يمكن استخراج productId:', err.message);
+        console.error('❌ فشل في فك الرابط المختصر من AliExpress:', err.message);
         return null;
       }
     }
@@ -124,12 +84,21 @@ async function extractProductId(rawUrl) {
     }
 
     // 2) محاولة استخراج productId من معاملات الاستعلام
-    const fromQuery = extractProductIdFromQuery(urlObj);
-    if (fromQuery) {
-      return fromQuery;
+    const params = urlObj.searchParams;
+    const keys = ['productId', 'itemId', 'objId', 'sku_id', 'spm', 'pdp_npi'];
+
+    for (const key of keys) {
+      if (params.has(key)) {
+        const val = params.get(key);
+        if (!val) continue;
+        const match = val.match(/d{6,}/);
+        if (match) {
+          return match[0];
+        }
+      }
     }
 
-    // في حال لم نجد أي شيء
+    // إذا لم نجد أي شيء
     return null;
   } catch (err) {
     console.error('❌ خطأ في دالة extractProductId:', err.message);
