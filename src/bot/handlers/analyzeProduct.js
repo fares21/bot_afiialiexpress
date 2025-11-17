@@ -33,11 +33,12 @@ function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
   const finalPrice = calculateFinalPrice(salePrice, shipping, couponValue);
 
   const title = productData.product_title || 'منتج بدون اسم محدد';
-  const currency = 'دولار أمريكي';
 
   let message = '';
 
-  // انتبه: كل سطر محاط بـ '' ومغلق، ولا يوجد كسر سطر داخل النص نفسه
+  // ⚠️ هذا السطر أهم واحد: كله في سطر واحد، والنزول سطرين يتم عبر 
+
+
   message += '✅ تم تحليل رابط المنتج بنجاح.
 
 ';
@@ -86,9 +87,10 @@ function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
 ';
   }
 
-  return { message, mainImage: productData.product_main_image_url || null };
-}
-/**
+  const mainImage = productData.product_main_image_url || null;
+
+  return { message, mainImage };
+}/**
  * المعالج الرئيسي الذي يستدعي AliExpress API ويعرض النتيجة للمستخدم.
  * يعتمد على getProductDetails من aliexpressClient، والتي تحتوي على Rate Limiting وCache داخلي.
  */
