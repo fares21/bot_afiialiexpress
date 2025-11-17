@@ -3,10 +3,7 @@ const buildAffiliateLink = require('../utils/buildAffiliateLink');
 const { formatCurrencyUSD, calculateFinalPrice } = require('../utils/priceFormatting');
 const { getProductDetails } = require('../utils/aliexpressClient');
 
-/**
- * يبني رسالة بسيطة بالعربية بدون رموز emoji
- */
-function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
+function buildFrenchMessage({ productId, productData, affiliateLink }) {
   const originalPrice = Number(
     productData.target_original_price ||
     productData.original_price ||
@@ -31,75 +28,55 @@ function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
   const discount = originalPrice > salePrice ? originalPrice - salePrice : 0;
   const finalPrice = calculateFinalPrice(salePrice, shipping, couponValue);
 
-  const title = productData.product_title || 'منتج بدون اسم';
+  const title = productData.product_title || 'Produit sans nom';
+  const lines = [];
 
-  const mainImage = productData.product_main_image_url || null;
-
-  // نصوص قصيرة، سطر واحد لكل string، بدون emoji
-  let message = '';
-  message += 'تم تحليل رابط المنتج.
-
-';
-  message += 'اسم المنتج: ' + title + '
-';
-  message += 'معرف المنتج: ' + productId + '
-
-';
-
-  message += 'تفاصيل السعر بالدولار:
-';
-  message += 'السعر الاصلي: ' + formatCurrencyUSD(originalPrice) + '
-';
-  message += 'السعر الحالي: ' + formatCurrencyUSD(salePrice) + '
-';
-
+  // Pas d’emoji, pas de multilignes dans une seule chaîne
+  lines.push('Analyse du produit terminée.');
+  lines.push('');
+  lines.push('Nom du produit: ' + title);
+  lines.push('ID du produit: ' + productId);
+  lines.push('');
+  lines.push('Détails de prix (USD):');
+  lines.push('Prix initial: ' + formatCurrencyUSD(originalPrice));
+  lines.push('Prix actuel: ' + formatCurrencyUSD(salePrice));
   if (discount > 0) {
-    message += 'قيمة التخفيض: ' + formatCurrencyUSD(discount) + '
-';
+    lines.push('Remise estimée: ' + formatCurrencyUSD(discount));
   }
-
-  message += 'سعر الشحن التقريبي: ' + formatCurrencyUSD(shipping) + '
-';
-  message += 'قيمة الكوبونات: ' + formatCurrencyUSD(couponValue) + '
-
-';
-
-  message += 'السعر النهائي التقريبي: ' + formatCurrencyUSD(finalPrice) + '
-
-';
-
-  message += 'ملاحظة: الاسعار تقريبية ويمكن ان تختلف داخل موقع او تطبيق علي اكسبريس.
-';
+  lines.push('Frais d’expédition estimés: ' + formatCurrencyUSD(shipping));
+  lines.push('Valeur des coupons: ' + formatCurrencyUSD(couponValue));
+  lines.push('');
+  lines.push('Prix final estimé: ' + formatCurrencyUSD(finalPrice));
+  lines.push('');
+  lines.push('Note: Les prix et coupons peuvent varier selon le compte et la région.');
 
   if (affiliateLink) {
-    message += '
-رابط الشراء:
-' + affiliateLink + '
-';
+    lines.push('');
+    lines.push('Lien d’achat:');
+    lines.push(affiliateLink);
   }
+
+  const message = lines.join('
+');
+  const mainImage = productData.product_main_image_url || null;
 
   return { message, mainImage };
 }
 
-/**
- * المعالج الذي يستدعي AliExpress API ويعرض النتيجة للمستخدم
- */
-async function handleAnalyzeProduct(ctx, { productId, url }) {
+async function handleAnalyzeProduct(ctx, { productId }) {
   const chatId = ctx.chat.id;
 
   try {
     await updateUserActivity(chatId, true);
 
-    await ctx.reply(
-      'جاري تحليل رابط المنتج من AliExpress، يرجى الانتظار قليلا...'
-    );
+    await ctx.reply('Analyse en cours, veuillez patienter quelques instants...');
 
-    const productData = await getProductDetails(productId, 'USD', 'AR', 'DZ');
+    const productData = await getProductDetails(productId, 'USD', 'FR', 'DZ');
 
     const affiliateLink =
       productData.promotion_link || buildAffiliateLink(productId);
 
-    const { message, mainImage } = buildArabicAnalysisMessage({
+    const { message, mainImage } = buildFrenchMessage({
       productId,
       productData,
       affiliateLink
@@ -111,25 +88,18 @@ async function handleAnalyzeProduct(ctx, { productId, url }) {
       await ctx.reply(message);
     }
   } catch (err) {
-    console.error('خطأ اثناء تحليل المنتج:', err);
     const msg = String(err.message || '');
-
-    // رسالة قصيرة عند ApiCallLimit
     if (
       msg.includes('ApiCallLimit') ||
       msg.includes('access frequency exceeds the limit')
     ) {
-      await ctx.reply(
-        'تم الوصول مؤقتا الى حد طلبات AliExpress. حاول بعد ثوان قليلة.'
-      );
+      await ctx.reply('Limite de fréquence API atteinte temporairement. Réessayez dans quelques secondes.');
       return;
     }
-
     await ctx.reply(
-      'حدث خطأ غير متوقع اثناء تحليل المنتج. حاول لاحقا او تحقق من الرابط.
+      'Erreur inattendue lors de l’analyse du produit. Réessayez plus tard ou vérifiez le lien.
 
-' +
-      'تفاصيل للمطور: ' + msg
+Détails: ' + msg
     );
   }
 }
