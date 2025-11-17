@@ -8,7 +8,6 @@ const { getProductDetails } = require('../utils/aliexpressClient');
  * تم افتراض شكل استجابة قريب من aliexpress.affiliate.productdetail.get
  */
 function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
-  // استخراج بيانات الأسعار مع التعامل مع الحقول البديلة
   const originalPrice = Number(
     productData.target_original_price ||
     productData.original_price ||
@@ -23,10 +22,7 @@ function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
     originalPrice
   );
 
-  // حاول الحصول على تكلفة الشحن إن كانت متوفرة، وإلا نعتبرها 0 كقيمة تقريبية
   const shipping = Number(productData.shipping_fee || 0);
-
-  // الكوبونات (يمكنك توسيعها حسب الحقول المتاحة في استجابتك الفعلية)
   const couponValue = Number(
     productData.coupon_amount ||
     productData.coupon_value ||
@@ -37,9 +33,11 @@ function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
   const finalPrice = calculateFinalPrice(salePrice, shipping, couponValue);
 
   const title = productData.product_title || 'منتج بدون اسم محدد';
-  const mainImage = productData.product_main_image_url || null;
+  const currency = 'دولار أمريكي';
 
   let message = '';
+
+  // انتبه: كل سطر محاط بـ '' ومغلق، ولا يوجد كسر سطر داخل النص نفسه
   message += '✅ تم تحليل رابط المنتج بنجاح.
 
 ';
@@ -88,9 +86,8 @@ function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
 ';
   }
 
-  return { message, mainImage };
+  return { message, mainImage: productData.product_main_image_url || null };
 }
-
 /**
  * المعالج الرئيسي الذي يستدعي AliExpress API ويعرض النتيجة للمستخدم.
  * يعتمد على getProductDetails من aliexpressClient، والتي تحتوي على Rate Limiting وCache داخلي.
