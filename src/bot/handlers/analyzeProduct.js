@@ -3,6 +3,9 @@ const buildAffiliateLink = require('../utils/buildAffiliateLink');
 const { formatCurrencyUSD, calculateFinalPrice } = require('../utils/priceFormatting');
 const { getProductDetails } = require('../utils/aliexpressClient');
 
+/**
+ * بناء رسالة تحليل المنتج بالفرنسية، بدون emoji وبدون strings متعددة الأسطر
+ */
 function buildFrenchMessage({ productId, productData, affiliateLink }) {
   const originalPrice = Number(
     productData.target_original_price ||
@@ -56,13 +59,15 @@ function buildFrenchMessage({ productId, productData, affiliateLink }) {
     lines.push(affiliateLink);
   }
 
-  // إصلاح السطر المكسور: استخدام '\n' داخل نفس السطر
   const message = lines.join('\n');
   const mainImage = productData.product_main_image_url || null;
 
   return { message, mainImage };
 }
 
+/**
+ * استدعاء AliExpress API، وبناء الرسالة، وإرسال النتيجة للمستخدم
+ */
 async function handleAnalyzeProduct(ctx, { productId }) {
   const chatId = ctx.chat.id;
 
@@ -83,7 +88,21 @@ async function handleAnalyzeProduct(ctx, { productId }) {
     });
 
     if (mainImage) {
-      await ctx.replyWithPhoto(mainImage, { caption: message });
+      // حماية من خطأ Telegram: "message caption is too long"
+      const MAX_CAPTION = 900; // أقل من حد 1024 بحوالي هامش آمن
+      let caption = message;
+      let rest = '';
+
+      if (message.length > MAX_CAPTION) {
+        caption = message.slice(0, MAX_CAPTION);
+        rest = message.slice(MAX_CAPTION);
+      }
+
+      await ctx.replyWithPhoto(mainImage, { caption });
+
+      if (rest.trim().length > 0) {
+        await ctx.reply(rest);
+      }
     } else {
       await ctx.reply(message);
     }
@@ -93,11 +112,12 @@ async function handleAnalyzeProduct(ctx, { productId }) {
       msg.includes('ApiCallLimit') ||
       msg.includes('access frequency exceeds the limit')
     ) {
-      await ctx.reply('Limite de fréquence de l’API atteinte temporairement. Veuillez réessayer dans quelques secondes.');
+      await ctx.reply(
+        'Limite de fréquence de l’API atteinte temporairement. Veuillez réessayer dans quelques secondes.'
+      );
       return;
     }
 
-    // توحيد الرسالة في String واحد مع \n\n بدون كسر سطر في الكود
     await ctx.reply(
       'Erreur inattendue lors de l’analyse du produit. Veuillez réessayer plus tard ou vérifier le lien.\n\nDétails : ' + msg
     );
