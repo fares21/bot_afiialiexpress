@@ -34,30 +34,30 @@ function buildFrenchMessage({ productId, productData, affiliateLink }) {
   // Pas d’emoji, pas de multilignes dans une seule chaîne
   lines.push('Analyse du produit terminée.');
   lines.push('');
-  lines.push('Nom du produit: ' + title);
-  lines.push('ID du produit: ' + productId);
+  lines.push('Nom du produit : ' + title);
+  lines.push('ID du produit : ' + productId);
   lines.push('');
-  lines.push('Détails de prix (USD):');
-  lines.push('Prix initial: ' + formatCurrencyUSD(originalPrice));
-  lines.push('Prix actuel: ' + formatCurrencyUSD(salePrice));
+  lines.push('Détails du prix (USD) :');
+  lines.push('Prix initial : ' + formatCurrencyUSD(originalPrice));
+  lines.push('Prix actuel : ' + formatCurrencyUSD(salePrice));
   if (discount > 0) {
-    lines.push('Remise estimée: ' + formatCurrencyUSD(discount));
+    lines.push('Remise estimée : ' + formatCurrencyUSD(discount));
   }
-  lines.push('Frais d’expédition estimés: ' + formatCurrencyUSD(shipping));
-  lines.push('Valeur des coupons: ' + formatCurrencyUSD(couponValue));
+  lines.push('Frais d’expédition estimés : ' + formatCurrencyUSD(shipping));
+  lines.push('Valeur des coupons : ' + formatCurrencyUSD(couponValue));
   lines.push('');
-  lines.push('Prix final estimé: ' + formatCurrencyUSD(finalPrice));
+  lines.push('Prix final estimé : ' + formatCurrencyUSD(finalPrice));
   lines.push('');
-  lines.push('Note: Les prix et coupons peuvent varier selon le compte et la région.');
+  lines.push('Note : les prix et coupons peuvent varier selon le compte et la région.');
 
   if (affiliateLink) {
     lines.push('');
-    lines.push('Lien d’achat:');
+    lines.push('Lien d’achat :');
     lines.push(affiliateLink);
   }
 
-  const message = lines.join('
-');
+  // إصلاح السطر المكسور: استخدام '\n' داخل نفس السطر
+  const message = lines.join('\n');
   const mainImage = productData.product_main_image_url || null;
 
   return { message, mainImage };
@@ -93,13 +93,13 @@ async function handleAnalyzeProduct(ctx, { productId }) {
       msg.includes('ApiCallLimit') ||
       msg.includes('access frequency exceeds the limit')
     ) {
-      await ctx.reply('Limite de fréquence API atteinte temporairement. Réessayez dans quelques secondes.');
+      await ctx.reply('Limite de fréquence de l’API atteinte temporairement. Veuillez réessayer dans quelques secondes.');
       return;
     }
-    await ctx.reply(
-      'Erreur inattendue lors de l’analyse du produit. Réessayez plus tard ou vérifiez le lien.
 
-Détails: ' + msg
+    // توحيد الرسالة في String واحد مع \n\n بدون كسر سطر في الكود
+    await ctx.reply(
+      'Erreur inattendue lors de l’analyse du produit. Veuillez réessayer plus tard ou vérifier le lien.\n\nDétails : ' + msg
     );
   }
 }
