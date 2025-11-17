@@ -4,8 +4,8 @@ const { formatCurrencyUSD, calculateFinalPrice } = require('../utils/priceFormat
 const { getProductDetails } = require('../utils/aliexpressClient');
 
 /**
- * بناء رسالة تحليل المنتج بالعربية الرسمية، اعتماداً على البيانات العائدة من AliExpress API.
- * تم افتراض شكل استجابة قريب من aliexpress.affiliate.productdetail.get
+ * بناء رسالة تحليل المنتج بالعربية باستخدام Template Literal (backticks)
+ * لتفادي مشاكل الأسطر المتعددة داخل النص.
  */
 function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
   const originalPrice = Number(
@@ -34,25 +34,17 @@ function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
 
   const title = productData.product_title || 'منتج بدون اسم محدد';
 
-  let message = '';
+  const mainImage = productData.product_main_image_url || null;
 
-  // ⚠️ هذا السطر أهم واحد: كله في سطر واحد، والنزول سطرين يتم عبر 
+  // ⚠️ هنا نستخدم backticks وليس single quotes، ويمكننا وضع أسطر متعددة بشكل آمن
+  let message = `✅ تم تحليل رابط المنتج بنجاح.
 
+📦 اسم المنتج: ${title}
+🆔 معرّف المنتج: ${productId}
 
-  message += '✅ تم تحليل رابط المنتج بنجاح.
-
-';
-  message += `📦 اسم المنتج: ${title}
-`;
-  message += `🆔 معرّف المنتج: ${productId}
-
-`;
-
-  message += '💰 التفاصيل المالية (بالدولار الأمريكي):
-';
-  message += `• السعر الأصلي التقريبي: ${formatCurrencyUSD(originalPrice)}
-`;
-  message += `• السعر الحالي بعد التخفيضات: ${formatCurrencyUSD(salePrice)}
+💰 التفاصيل المالية (بالدولار الأمريكي):
+• السعر الأصلي التقريبي: ${formatCurrencyUSD(originalPrice)}
+• السعر الحالي بعد التخفيضات: ${formatCurrencyUSD(salePrice)}
 `;
 
   if (discount > 0) {
@@ -61,55 +53,44 @@ function buildArabicAnalysisMessage({ productId, productData, affiliateLink }) {
   }
 
   message += `• تكلفة الشحن التقديرية إلى الجزائر: ${formatCurrencyUSD(shipping)}
+• مجموع الكوبونات المطبقة (إن وُجدت): ${formatCurrencyUSD(couponValue)}
+
+🎯 السعر النهائي التقريبي بعد احتساب الشحن والكوبونات:
+→ ${formatCurrencyUSD(finalPrice)}
+
+ℹ️ ملاحظات مهمة:
+- قد تختلف الأسعار الفعلية والكوبونات المتاحة حسب حسابك، والمنطقة، وتاريخ الشراء.
+- يرجى التحقق من التفاصيل النهائية داخل تطبيق أو موقع AliExpress قبل إتمام الطلب.
 `;
-  message += `• مجموع الكوبونات المطبقة (إن وُجدت): ${formatCurrencyUSD(couponValue)}
-
-`;
-
-  message += '🎯 السعر النهائي التقريبي بعد احتساب الشحن والكوبونات:
-';
-  message += `→ ${formatCurrencyUSD(finalPrice)}
-
-`;
-
-  message += 'ℹ️ ملاحظات مهمة:
-';
-  message += '- قد تختلف الأسعار الفعلية والكوبونات المتاحة حسب حسابك، والمنطقة، وتاريخ الشراء.
-';
-  message += '- يرجى التحقق من التفاصيل النهائية داخل تطبيق أو موقع AliExpress قبل إتمام الطلب.
-
-';
 
   if (affiliateLink) {
-    message += '🔗 رابط الشراء (قد يكون رابط أفلييت يتضمن تتبعاً للزيارات):
-';
-    message += affiliateLink + '
-';
+    message += `
+
+🔗 رابط الشراء (قد يكون رابط أفلييت يتضمن تتبّعاً للزيارات):
+${affiliateLink}
+`;
   }
 
-  const mainImage = productData.product_main_image_url || null;
-
   return { message, mainImage };
-}/**
+}
+
+/**
  * المعالج الرئيسي الذي يستدعي AliExpress API ويعرض النتيجة للمستخدم.
- * يعتمد على getProductDetails من aliexpressClient، والتي تحتوي على Rate Limiting وCache داخلي.
  */
 async function handleAnalyzeProduct(ctx, { productId, url }) {
   const chatId = ctx.chat.id;
 
   try {
-    // تحديث نشاط المستخدم
     await updateUserActivity(chatId, true);
 
-    // رسالة انتظار للمستخدم
     await ctx.reply(
       '⏳ جاري تحليل رابط المنتج وجلب البيانات من AliExpress، يرجى الانتظار للحظات...'
     );
 
-    // جلب بيانات المنتج من AliExpress API (مع كاش وريـت ليميت داخل aliexpressClient)
+    // جلب بيانات المنتج من AliExpress API
     const productData = await getProductDetails(productId, 'USD', 'AR', 'DZ');
 
-    // إذا كان لدى AliExpress رابط ترويج جاهز، نستخدمه، وإلا نبني واحداً من productId
+    // بناء رابط الأفلييت
     const affiliateLink =
       productData.promotion_link || buildAffiliateLink(productId);
 
@@ -120,33 +101,26 @@ async function handleAnalyzeProduct(ctx, { productId, url }) {
     });
 
     if (mainImage) {
-      await ctx.replyWithPhoto(mainImage, {
-        caption: message
-      });
+      await ctx.replyWithPhoto(mainImage, { caption: message });
     } else {
       await ctx.reply(message);
     }
   } catch (err) {
     console.error('❌ خطأ أثناء تحليل المنتج:', err);
-
     const msg = String(err.message || '');
 
-    // معالجة خاصة لخطأ ApiCallLimit (تجاوز حدّ التردد)
     if (
       msg.includes('ApiCallLimit') ||
       msg.includes('access frequency exceeds the limit')
     ) {
       await ctx.reply(
-        '⚠️ يبدو أنه تم الوصول مؤقتاً إلى الحد الأقصى لعدد الطلبات المسموح بها من واجهة AliExpress.
+        '⚠️ تم الوصول مؤقتاً إلى الحد الأقصى لعدد الطلبات المسموح بها من واجهة AliExpress.
 ' +
-        'يرجى الانتظار لثوانٍ قليلة ثم إعادة المحاولة.
-' +
-        'هذه مشكلة تقنية مؤقتة تتعلق بسرعة الاتصال بالمخدم، وليست مرتبطة بصحة الرابط نفسه.'
+        'يرجى الانتظار لثوانٍ قليلة ثم إعادة المحاولة.'
       );
       return;
     }
 
-    // باقي الأخطاء: رسالة عامة مع إظهار التفاصيل للمطور
     await ctx.reply(
       '❌ عذراً، حدث خطأ غير متوقع أثناء محاولة تحليل هذا المنتج.
 ' +
